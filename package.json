@@ -1,20 +1,27 @@
 {
   "name": "jobsara-backend-rip",
   "version": "1.0.0",
-  "description": "\t",
-  "homepage": "https://github.com/Mohmmad-hosein/JobSara-Backend-rip#readme",
-  "bugs": {
-    "url": "https://github.com/Mohmmad-hosein/JobSara-Backend-rip/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Mohmmad-hosein/JobSara-Backend-rip.git"
-  },
+  "description": "",
   "license": "ISC",
-  "author": "",
+  "author": "MH",
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate": "node scripts/migrate.js"
+  },
+  "keywords": [],
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }
