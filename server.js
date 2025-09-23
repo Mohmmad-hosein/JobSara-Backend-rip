@@ -1,7 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const User = require('./models/user');
-const jwt = require('jsonwebtoken'); // اضافه کردن ماژول jwt
+const Teacher = require('./models/teacher');
+const jwt = require('jsonwebtoken'); 
 
 // Load env variables
 dotenv.config();
@@ -490,6 +491,78 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) =
             success: false,
             message: 'Internal server error'
         });
+    }
+});
+
+app.get('/api/teachers', authenticateToken, async (req, res) => {
+    try {
+        const isAdmin = req.user.user_type === 'admin';
+        const { search, minRating = 0, limit = 10, offset = 0 } = req.query;
+        
+        const teachers = await Teacher.getTeachers({
+            isAdmin,
+            search,
+            minRating: parseFloat(minRating),
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        });
+        
+        res.json({
+            success: true,
+            teachers,
+            pagination: { limit, offset, total: teachers.length } // total واقعی نیاز به کوئری جدا داره اگر بخوای
+        });
+    } catch (error) {
+        console.error('Teachers list error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// ۲. API اضافه کردن تیچر (POST)
+app.post('/api/teachers', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const teacherId = await Teacher.addTeacher(req.body);
+        res.status(201).json({ success: true, message: 'Teacher added', teacherId });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error adding teacher' });
+    }
+});
+
+// API حذف تیچر (DELETE)
+app.delete('/api/teachers/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const changes = await Teacher.deleteTeacher(req.params.id);
+        if (changes > 0) {
+            res.json({ success: true, message: 'Teacher deleted' });
+        } else {
+            res.status(404).json({ success: false, message: 'Teacher not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error deleting teacher' });
+    }
+});
+
+// ۳. API تیچرها برای لندینگ (بدون احراز هویت، عمومی)
+app.get('/api/landing/teachers', async (req, res) => {
+    try {
+        const { limit = 5 } = req.query;
+        const teachers = await Teacher.getLandingTeachers(parseInt(limit));
+        res.json({ success: true, teachers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// ۴. API جزئیات تیچر
+app.get('/api/teachers/:id', authenticateToken, async (req, res) => {
+    try {
+        const teacher = await Teacher.getTeacherDetails(req.params.id);
+        if (!teacher) {
+            return res.status(404).json({ success: false, message: 'Teacher not found' });
+        }
+        res.json({ success: true, teacher });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 
