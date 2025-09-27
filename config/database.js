@@ -114,7 +114,7 @@ function initializeDatabase() {
     }
   );
 
-  db.run(`ALTER TABLE users ADD COLUMN bio TEXT`, (err) => {
+db.run(`ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'`, (err) => {
     if (err && !err.message.includes("duplicate column name")) {
       console.error("❌ Error adding bio to users:", err.message);
     } else {
@@ -122,9 +122,26 @@ function initializeDatabase() {
     }
   });
 
+db.run(`ALTER TABLE user_profiles ADD COLUMN translated_bio TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+        console.error('❌ Error adding translated_bio:', err.message);
+    } else {
+        console.log('✅ Added translated_bio');
+    }
+});
+
   // ایجاد سایر جداول با تاخیر برای جلوگیری از قفل شدن
   setTimeout(() => createAdditionalTables(), 100);
 }
+
+// برای courses (اگر description داره)
+db.run(`ALTER TABLE courses ADD COLUMN translated_description TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+        console.error('❌ Error adding translated_description:', err.message);
+    } else {
+        console.log('✅ Added translated_description');
+    }
+});
 
 // تابع برای ایجاد جداول اضافی با تاخیر
 function createAdditionalTables() {
