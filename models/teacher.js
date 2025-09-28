@@ -54,26 +54,22 @@ class Teacher {
     }
 
     // اضافه کردن تیچر جدید
-    static async addTeacher(teacherData) {
-        teacherData.userType = 'teacher';
-        const userId = await require('./user').create(teacherData);
-        
-        // اگر bio وجود داره، نسخه ترجمه‌شده رو ذخیره کن
-        if (teacherData.bio) {
-            const translatedBio = translateText(teacherData.bio, 'fa'); // پیش‌فرض به پارسی
-            await db.runQuery(
-                'INSERT INTO user_profiles (user_id, bio, translated_bio) VALUES (?, ?, ?)',
-                [userId, teacherData.bio, translatedBio]
-            );
-        } else {
-            await db.runQuery(
-                'INSERT INTO user_profiles (user_id, bio) VALUES (?, ?)',
-                [userId, teacherData.bio || '']
-            );
-        }
-        
-        return userId;
+static async addTeacher(teacherData, profilePictureBuffer) {
+    teacherData.userType = 'teacher';
+    const userId = await require('./user').create(teacherData);
+    
+    let translatedBio = '';
+    if (teacherData.bio) {
+        translatedBio = translateText(teacherData.bio, 'fa');
     }
+    
+    await db.runQuery(
+        'INSERT INTO user_profiles (user_id, bio, translated_bio, profile_picture) VALUES (?, ?, ?, ?)',
+        [userId, teacherData.bio || '', translatedBio, profilePictureBuffer || null]
+    );
+    
+    return userId;
+}
 
     // حذف تیچر
     static async deleteTeacher(id) {
@@ -109,24 +105,27 @@ class Teacher {
     }
 
     // گرفتن جزئیات تیچر
-    static async getTeacherDetails(id, lang = 'en') {
-        const sql = `
-            SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.email, u.rating, p.bio, p.translated_bio,
-                   COUNT(c.id) as courseCount
-            FROM users u
-            LEFT JOIN user_profiles p ON u.id = p.user_id
-            LEFT JOIN courses c ON u.id = c.teacher_id
-            WHERE u.id = ? AND u.user_type = 'teacher'
-            GROUP BY u.id, p.bio, p.translated_bio
-        `;
-        const teacher = await db.getQuery(sql, [id]);
-        
-        if (teacher) {
-            teacher.bio = lang === 'fa' && teacher.translated_bio ? teacher.translated_bio : translateText(teacher.bio, lang);
+static async getTeacherDetails(id, lang = 'en') {
+    const sql = `
+        SELECT u.id, u.username, u.first_name, u.last_name, u.phone, u.email, u.rating, p.bio, p.translated_bio, p.profile_picture,
+               COUNT(c.id) as courseCount
+        FROM users u
+        LEFT JOIN user_profiles p ON u.id = p.user_id
+        LEFT JOIN courses c ON u.id = c.teacher_id
+        WHERE u.id = ? AND u.user_type = 'teacher'
+        GROUP BY u.id, p.bio, p.translated_bio, p.profile_picture
+    `;
+    const teacher = await db.getQuery(sql, [id]);
+    
+    if (teacher) {
+        teacher.bio = lang === 'fa' && teacher.translated_bio ? teacher.translated_bio : translateText(teacher.bio, lang);
+        if (teacher.profile_picture) {
+            teacher.profile_picture = `data:image/jpeg;base64,${teacher.profile_picture.toString('base64')}`; // تبدیل به base64 برای نمایش
         }
-        
-        return teacher;
     }
+    
+    return teacher;
+}
 }
 
 module.exports = Teacher;

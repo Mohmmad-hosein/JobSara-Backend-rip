@@ -2,8 +2,9 @@ const express = require("express");
 const dotenv = require("dotenv");
 const User = require("./models/user");
 const Teacher = require("./models/teacher");
+const multer = require('multer');
 const jwt = require("jsonwebtoken");
-const { i18next, middleware } = require("./i18n"); // اضافه کردن i18next
+const { i18next, middleware } = require("./i18n"); 
 
 // Load env variables
 dotenv.config();
@@ -15,6 +16,19 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(middleware.handle(i18next)); // اضافه کردن middleware برای چندزبانه
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPG/PNG allowed'), false);
+        }
+    }
+});
 
 // Middleware برای احراز هویت
 const authenticateToken = async (req, res, next) => {
@@ -562,17 +576,15 @@ app.get("/api/teachers", authenticateToken, async (req, res) => {
 });
 
 // API اضافه کردن تیچر
-app.post("/api/teachers", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const teacherId = await Teacher.addTeacher(req.body);
-    res
-      .status(201)
-      .json({ success: true, message: req.t("Teacher added"), teacherId });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: req.t("Error adding teacher") });
-  }
+app.post('/api/teachers', authenticateToken, requireAdmin, upload.single('profilePicture'), async (req, res) => {
+    try {
+        const profilePictureBuffer = req.file ? req.file.buffer : null;
+        const teacherId = await Teacher.addTeacher(req.body, profilePictureBuffer);
+        res.status(201).json({ success: true, message: req.t('Teacher added'), teacherId });
+    } catch (error) {
+        console.error('Error adding teacher:', error);
+        res.status(500).json({ success: false, message: req.t('Error adding teacher') + (error.message ? ': ' + error.message : '') });
+    }
 });
 
 // API حذف تیچر

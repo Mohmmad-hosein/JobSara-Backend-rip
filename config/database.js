@@ -130,6 +130,14 @@ db.run(`ALTER TABLE user_profiles ADD COLUMN translated_bio TEXT`, (err) => {
     }
 });
 
+db.run(`ALTER TABLE user_profiles ADD COLUMN profile_picture BLOB`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+        console.error('❌ Error adding profile_picture to user_profiles:', err.message);
+    } else {
+        console.log('✅ Added profile_picture to user_profiles table');
+    }
+});
+
   // ایجاد سایر جداول با تاخیر برای جلوگیری از قفل شدن
   setTimeout(() => createAdditionalTables(), 100);
 }
