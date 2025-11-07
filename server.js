@@ -2,9 +2,10 @@ const express = require("express");
 const dotenv = require("dotenv");
 const User = require("./models/user");
 const Teacher = require("./models/teacher");
-const multer = require('multer');
+const multer = require("multer");
 const jwt = require("jsonwebtoken");
-const { i18next, middleware } = require("./i18n"); 
+const { i18next, middleware } = require("./i18n");
+const { sendEmail } = require("./email");
 
 // Load env variables
 dotenv.config();
@@ -18,16 +19,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(middleware.handle(i18next)); // اضافه کردن middleware برای چندزبانه
 
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB max
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/png'];
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Invalid file type. Only JPG/PNG allowed'), false);
-        }
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, 
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/png"];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type. Only JPG/PNG allowed"), false);
     }
+  },
 });
 
 // Middleware برای احراز هویت
@@ -62,9 +63,9 @@ const authenticateToken = async (req, res, next) => {
       req.headers["accept-language"]?.split(",")[0]?.trim() || "en";
     const lang = acceptLang.startsWith("fa") ? "fa" : "en";
     if (!user.language) {
-            await User.update(user.id, { language: lang });
-            req.user.language = lang;
-        }
+      await User.update(user.id, { language: lang });
+      req.user.language = lang;
+    }
     req.i18n.changeLanguage(user.language || "en");
     next();
   } catch (error) {
@@ -76,7 +77,6 @@ const authenticateToken = async (req, res, next) => {
         message: req.t("Token expired"),
       });
     }
-    
 
     if (error.name === "JsonWebTokenError") {
       return res.status(403).json({
@@ -185,6 +185,44 @@ app.post("/api/register", async (req, res) => {
 
     // گرفتن اطلاعات کاربر ایجاد شده
     const newUser = await User.findById(userId);
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="fa" dir="rtl">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>خوش‌آمدگویی به جابسرا</title>
+          <style>
+              body { font-family: 'Tahoma', sans-serif; background-color: #f4f4f4; padding: 20px; }
+              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+              .header { background-color: #4c4eafff; color: white; padding: 10px; text-align: center; border-radius: 8px 8px 0 0; }
+              .content { padding: 20px; text-align: center; }
+              .button { background-color: #4c4eafff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block; }
+              .footer { font-size: 12px; color: #888; text-align: center; margin-top: 20px; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="header">
+                  <h1>خوش‌آمدگویی به جابسرا!</h1>
+              </div>
+              <div class="content">
+                  <p>سلام <strong>${newUser.first_name} ${newUser.last_name}</strong> عزیز،</p>
+                  <p>ثبت‌نامت با موفقیت انجام شد. حالا می‌تونی وارد بشی:</p>
+                  <a href="http://localhost:3000/api/login" class="button">ورود به سایت</a>
+                  <p>اگر سوالی داشتی، با ما تماس بگیر!</p>
+              </div>
+              <div class="footer">
+                  <p>جابسرا - پلتفرم کاریابی و آموزش © 2023</p>
+              </div>
+          </div>
+      </body>
+      </html>
+      `;    
+
+    // ارسال ایمیل خوش‌آمدگویی
+    await sendEmail(newUser.email, "خوش‌آمدگویی به جابسرا", htmlContent);
 
     // تولید توکن JWT
     const token = jwt.sign(
@@ -576,16 +614,32 @@ app.get("/api/teachers", authenticateToken, async (req, res) => {
 });
 
 // API اضافه کردن تیچر
-app.post('/api/teachers', authenticateToken, requireAdmin, upload.single('profilePicture'), async (req, res) => {
+app.post(
+  "/api/teachers",
+  authenticateToken,
+  requireAdmin,
+  upload.single("profilePicture"),
+  async (req, res) => {
     try {
-        const profilePictureBuffer = req.file ? req.file.buffer : null;
-        const teacherId = await Teacher.addTeacher(req.body, profilePictureBuffer);
-        res.status(201).json({ success: true, message: req.t('Teacher added'), teacherId });
+      const profilePictureBuffer = req.file ? req.file.buffer : null;
+      const teacherId = await Teacher.addTeacher(
+        req.body,
+        profilePictureBuffer
+      );
+      res
+        .status(201)
+        .json({ success: true, message: req.t("Teacher added"), teacherId });
     } catch (error) {
-        console.error('Error adding teacher:', error);
-        res.status(500).json({ success: false, message: req.t('Error adding teacher') + (error.message ? ': ' + error.message : '') });
+      console.error("Error adding teacher:", error);
+      res.status(500).json({
+        success: false,
+        message:
+          req.t("Error adding teacher") +
+          (error.message ? ": " + error.message : ""),
+      });
     }
-});
+  }
+);
 
 // API حذف تیچر
 app.delete(
