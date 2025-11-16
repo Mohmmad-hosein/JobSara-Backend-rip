@@ -67,6 +67,24 @@ function initializeDatabase() {
       }
     }
   );
+  // add contact-us database
+  // db.run(
+  //   `CREATE TABLE IF NOT EXISTS contactUs (
+  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
+  //       userId INTEGER UNIQUE NOT NULL,
+  //       title TEXT UNIQUE NOT NULL,
+  //       describe TEXT NOT NULL,
+  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  //   )`,
+  //   (err) => {
+  //     if (err) {
+  //       console.error("❌ Error creating message table:", err.message);
+  //     } else {
+  //       console.log("✅ Contact-us table ready");
+  //     }
+  //   }
+  // );
 
   // ایجاد جدول user_sessions برای توکن‌ها
   db.run(
@@ -114,7 +132,7 @@ function initializeDatabase() {
     }
   );
 
-db.run(`ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'`, (err) => {
+  db.run(`ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'`, (err) => {
     if (err && !err.message.includes("duplicate column name")) {
       console.error("❌ Error adding bio to users:", err.message);
     } else {
@@ -122,21 +140,21 @@ db.run(`ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'`, (err) => {
     }
   });
 
-db.run(`ALTER TABLE user_profiles ADD COLUMN translated_bio TEXT`, (err) => {
+  db.run(`ALTER TABLE user_profiles ADD COLUMN translated_bio TEXT`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
-        console.error('❌ Error adding translated_bio:', err.message);
+      console.error('❌ Error adding translated_bio:', err.message);
     } else {
-        console.log('✅ Added translated_bio');
+      console.log('✅ Added translated_bio');
     }
-});
+  });
 
-db.run(`ALTER TABLE user_profiles ADD COLUMN profile_picture BLOB`, (err) => {
+  db.run(`ALTER TABLE user_profiles ADD COLUMN profile_picture BLOB`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
-        console.error('❌ Error adding profile_picture to user_profiles:', err.message);
+      console.error('❌ Error adding profile_picture to user_profiles:', err.message);
     } else {
-        console.log('✅ Added profile_picture to user_profiles table');
+      console.log('✅ Added profile_picture to user_profiles table');
     }
-});
+  });
 
   // ایجاد سایر جداول با تاخیر برای جلوگیری از قفل شدن
   setTimeout(() => createAdditionalTables(), 100);
@@ -144,11 +162,11 @@ db.run(`ALTER TABLE user_profiles ADD COLUMN profile_picture BLOB`, (err) => {
 
 // برای courses (اگر description داره)
 db.run(`ALTER TABLE courses ADD COLUMN translated_description TEXT`, (err) => {
-    if (err && !err.message.includes('duplicate column name')) {
-        console.error('❌ Error adding translated_description:', err.message);
-    } else {
-        console.log('✅ Added translated_description');
-    }
+  if (err && !err.message.includes('duplicate column name')) {
+    console.error('❌ Error adding translated_description:', err.message);
+  } else {
+    console.log('✅ Added translated_description');
+  }
 });
 
 // تابع برای ایجاد جداول اضافی با تاخیر
