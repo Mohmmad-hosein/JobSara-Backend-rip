@@ -1,56 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const { sendEmail } = require('../email');  // اگر لازم باشه ایمپورت کن
+const bcrypt = require('bcryptjs'); // اضافه شد برای هش کردن پسورد جدید
+const { sendEmail } = require('../email');
 const User = require('../models/user');
 const jwt = require('jsonwebtoken');
-const { authenticateToken, requireAdmin } = require('../middlewares/auth');
+const { authenticateToken } = require('../middlewares/auth');
+const { decode, encode } = require("../utils/idHasher");
 
-
-// API برای ثبت نام کاربر جدید
-router.post("/api/register", async (req, res) => {
+// مرحله ۱ ثبت‌نام: ایجاد کاربر موقت + ارسال کد تأیید
+router.post("/api/register/step1", async (req, res) => {
   try {
-    console.log("Registration request received:", req.body);
+    const { username, email, password, firstName, lastName, phone, userType } = req.body;
 
-    const {
-      username,
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
-      userType,
-      companyName,
-      skills,
-      experienceLevel,
-    } = req.body;
-
-    // بررسی فیلدهای اجباری
-    if (
-      !username ||
-      !email ||
-      !password ||
-      !firstName ||
-      !lastName ||
-      !userType
-    ) {
+    if (!username || !email || !password || !firstName || !lastName || !userType) {
       return res.status(400).json({
         success: false,
         message: req.t("Missing required fields"),
       });
     }
 
-    // بررسی نقش معتبر
     const validRoles = ["job_seeker", "intern", "employer", "admin", "teacher"];
     if (!validRoles.includes(userType)) {
       return res.status(400).json({
         success: false,
-        message: req.t(
-          `Invalid user type. Valid types are: ${validRoles.join(", ")}`
-        ),
+        message: req.t(`Invalid user type. Valid types are: ${validRoles.join(", ")}`),
       });
     }
 
-    // بررسی اینکه کاربر با این ایمیل قبلاً ثبت نام نکرده باشد
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({
@@ -59,7 +35,6 @@ router.post("/api/register", async (req, res) => {
       });
     }
 
-    // بررسی اینکه نام کاربری تکراری نباشد
     const existingUsername = await User.findByUsername(username);
     if (existingUsername) {
       return res.status(400).json({
@@ -68,7 +43,7 @@ router.post("/api/register", async (req, res) => {
       });
     }
 
-    // ایجاد کاربر جدید
+    // ایجاد کاربر (is_verified = 0 به صورت پیش‌فرض)
     const userId = await User.create({
       username,
       email,
@@ -77,34 +52,118 @@ router.post("/api/register", async (req, res) => {
       lastName,
       phone,
       userType,
-      companyName: companyName || "",
-      skills: skills || "",
-      experienceLevel: experienceLevel || "Beginner",
     });
 
-    console.log("User created with ID:", userId);
+    // تولید و ارسال کد تأیید
+    const code = User.generateVerificationCode();
+    await User.saveVerificationToken(userId, code, 'registration');
 
-    // گرفتن اطلاعات کاربر ایجاد شده
-    const newUser = await User.findById(userId);
+    const lang = req.headers["accept-language"]?.startsWith("fa") ? "fa" : "en";
 
-    // تشخیص زبان از هدر Accept-Language (شبیه به نمونه کدت)
-    const acceptLang =
-      req.headers["accept-language"]?.split(",")[0]?.trim() || "en";
-    const lang = acceptLang.startsWith("fa") ? "fa" : "en";
+    const htmlContent = lang === "fa" ? `
+      <!DOCTYPE html>
+      <html lang="fa" dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+        <title>کد تأیید جابسرا</title>
+        <style>
+          body { font-family: sans-serif; background:#01010126; padding:20px; }
+          .container { max-width:600px; margin:auto; background:white; border-radius:8px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+          .header { background:#1E3A8A; color:white; padding:15px; text-align:center; border-radius:8px 8px 0 0; }
+          .content { padding:20px; text-align:center; }
+          .code { background:#38BDF8; color:white; padding:10px 20px; display:inline-block; border-radius:4px; letter-spacing:5px; font-size:24px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>کد تأیید حساب</h1>
+          </div>
+          <div class="content">
+            <p>سلام <strong>${firstName} ${lastName}</strong>،</p>
+            <p>کد تأیید شما:</p>
+            <div class="code">${code}</div>
+            <p>این کد تا ۱۰ دقیقه معتبر است.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    ` : `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Verification Code - JobSara</title>
+        <style>
+          body { font-family: Arial, sans-serif; background:#01010126; padding:20px; }
+          .container { max-width:600px; margin:auto; background:white; border-radius:8px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+          .header { background:#1E3A8A; color:white; padding:15px; text-align:center; border-radius:8px 8px 0 0; }
+          .content { padding:20px; text-align:center; }
+          .code { background:#38BDF8; color:white; padding:10px 20px; display:inline-block; border-radius:4px; letter-spacing:5px; font-size:24px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Account Verification Code</h1>
+          </div>
+          <div class="content">
+            <p>Hello <strong>${firstName} ${lastName}</strong>,</p>
+            <p>Your verification code:</p>
+            <div class="code">${code}</div>
+            <p>This code is valid for 10 minutes.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
 
-    // ذخیره زبان اگر وجود نداشته باشه
-    if (!newUser.language) {
-      await User.update(newUser.id, { language: lang });
-      newUser.language = lang;
+    await sendEmail(email, lang === "fa" ? "کد تأیید جابسرا" : "JobSara Verification Code", htmlContent);
+
+    res.json({
+      success: true,
+      message: req.t("Verification code sent"),
+      hashedId: encode(userId),
+    });
+  } catch (error) {
+    console.error("Register step1 error:", error);
+    res.status(500).json({
+      success: false,
+      message: req.t("Internal server error"),
+    });
+  }
+});
+
+// مرحله ۲: تأیید کد و فعال‌سازی + ارسال ایمیل خوش‌آمدگویی + لاگین
+router.post("/api/register/verify", async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+
+    const validToken = await User.getValidVerificationToken(userId, code, 'registration');
+    if (!validToken) {
+      return res.status(400).json({
+        success: false,
+        message: req.t("Invalid or expired code"),
+      });
     }
 
-    // تنظیم زبان برای i18next
-    req.i18n.changeLanguage(newUser.language || "en");
+    await User.verifyUser(userId);
+    await User.deleteVerificationToken(userId, 'registration');
 
-    // محتوای ایمیل بر اساس زبان
-    let htmlContent;
-    if (newUser.language === "fa") {
-      htmlContent = `
+    const user = await User.findById(userId);
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, userType: user.user_type },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "24h" }
+    );
+
+    // زبان کاربر (اگر ذخیره شده باشه) یا پیش‌فرض
+    const lang = user.language || "en";
+    req.i18n.changeLanguage(lang);
+
+    // قالب کامل خوش‌آمدگویی (دقیقاً همون قالب قدیمی پروژه)
+    const welcomeHtml = lang === "fa" ? `
       <!DOCTYPE html>
       <html lang="fa" dir="rtl">
       <head>
@@ -112,11 +171,11 @@ router.post("/api/register", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>خوش‌آمدگویی به جابسرا</title>
           <style>
-              body { font-family: 'Bnazanin', sans-serif; background-color: #f4f4f4; padding: 20px; }
-              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);border: 1px solid #1f1f1fff; }
+              body { font-family: 'Bnazanin', sans-serif; background-color: #01010126; padding: 20px; }
+              .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #1f1f1fff; }
               .header { background-color: #1E3A8A; color: white; padding: 10px; text-align: center; border-radius: 8px 8px 0 0; }
               .content { padding: 20px; text-align: center; }
-              .button { background-color: #38BDF8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;color: #ffffffff; font-weight: bold; margin-top: 20px; }
+              .button { background-color: #38BDF8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block; color: #ffffffff; font-weight: bold; margin-top: 20px; }
               .footer { font-size: 12px; color: #888; text-align: center; margin-top: 20px; }
           </style>
       </head>
@@ -126,7 +185,7 @@ router.post("/api/register", async (req, res) => {
                   <h1>خوش‌آمدگویی به جابسرا!</h1>
               </div>
               <div class="content">
-                  <p>سلام <strong>${newUser.first_name} ${newUser.last_name}</strong> عزیز،</p>
+                  <p>سلام <strong>${user.first_name} ${user.last_name}</strong> عزیز،</p>
                   <p>ثبت‌نامت با موفقیت انجام شد. حالا می‌تونی وارد بشی:</p>
                   <a href="https://jobsara.com/login" class="button">ورود به سایت</a>
                   <p>اگر سوالی داشتی، با ما تماس بگیر!</p>
@@ -137,10 +196,7 @@ router.post("/api/register", async (req, res) => {
           </div>
       </body>
       </html>
-      `;
-    } else {
-      // نسخه انگلیسی
-      htmlContent = `
+    ` : `
       <!DOCTYPE html>
       <html lang="en" dir="ltr">
       <head>
@@ -148,7 +204,7 @@ router.post("/api/register", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Welcome to JobSara</title>
           <style>
-              body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }
+              body { font-family: Arial, sans-serif; background-color: #01010126; padding: 20px; }
               .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #1f1f1f; }
               .header { background-color: #1E3A8A; color: white; padding: 10px; text-align: center; border-radius: 8px 8px 0 0; }
               .content { padding: 20px; text-align: center; }
@@ -162,7 +218,7 @@ router.post("/api/register", async (req, res) => {
                   <h1>Welcome to JobSara!</h1>
               </div>
               <div class="content">
-                  <p>Hello <strong>${newUser.first_name} ${newUser.last_name}</strong>,</p>
+                  <p>Hello <strong>${user.first_name} ${user.last_name}</strong>,</p>
                   <p>Your registration was successful. You can now log in:</p>
                   <a href="https://jobsara.com/login" class="button">Log in to the site</a>
                   <p>If you have any questions, contact us!</p>
@@ -173,53 +229,152 @@ router.post("/api/register", async (req, res) => {
           </div>
       </body>
       </html>
-      `;
-    }
+    `;
 
-    // عنوان ایمیل هم بر اساس زبان
-    const emailSubject = newUser.language === "fa" ? "خوش‌آمدگویی به جابسرا" : "Welcome to JobSara";
+    await sendEmail(user.email, lang === "fa" ? "خوش‌آمدگویی به جابسرا" : "Welcome to JobSara", welcomeHtml);
 
-    // ارسال ایمیل خوش‌آمدگویی
-    await sendEmail(newUser.email, emailSubject, htmlContent);
-
-    // تولید توکن JWT
-    const token = jwt.sign(
-      {
-        userId: newUser.id,
-        email: newUser.email,
-        userType: newUser.user_type,
-      },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "24h" }
-    );
-
-    res.status(201).json({
+    res.json({
       success: true,
       message: req.t("User registered successfully"),
-      userId: userId,
-      token: token,
+      token,
       user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-        firstName: newUser.first_name,
-        lastName: newUser.last_name,
-        userType: newUser.user_type,
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        userType: user.user_type,
       },
     });
   } catch (error) {
-    console.error("Registration error details:", error);
+    console.error("Register verify error:", error);
     res.status(500).json({
       success: false,
-      message:
-        req.t("Internal server error during registration") +
-        ": " +
-        error.message,
+      message: req.t("Internal server error"),
     });
   }
 });
 
-// API برای ورود کاربر
+// فراموشی رمز عبور: ارسال کد ریست
+router.post("/api/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: req.t("User not found"),
+      });
+    }
+
+    const code = User.generateVerificationCode();
+    await User.saveVerificationToken(user.id, code, 'password_reset');
+
+    const lang = req.headers["accept-language"]?.startsWith("fa") ? "fa" : "en";
+
+    const htmlContent = lang === "fa" ? `
+      <!DOCTYPE html>
+      <html lang="fa" dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+        <title>ریست رمز عبور جابسرا</title>
+        <style>
+          body { font-family: sans-serif; background:#01010126; padding:20px; }
+          .container { max-width:600px; margin:auto; background:white; border-radius:8px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+          .header { background:#1E3A8A; color:white; padding:15px; text-align:center; border-radius:8px 8px 0 0; }
+          .content { padding:20px; text-align:center; }
+          .code { background:#38BDF8; color:white; padding:10px 20px; display:inline-block; border-radius:4px; letter-spacing:5px; font-size:24px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>ریست رمز عبور</h1>
+          </div>
+          <div class="content">
+            <p>سلام <strong>${user.first_name} ${user.last_name}</strong>،</p>
+            <p>کد ریست رمز عبور شما:</p>
+            <div class="code">${code}</div>
+            <p>این کد تا ۱۰ دقیقه معتبر است.</p>
+            <p>اگر شما درخواست ریست رمز عبور نداده‌اید، این ایمیل را نادیده بگیرید.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    ` : `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>JobSara Password Reset</title>
+        <style>
+          body { font-family: Arial, sans-serif; background:#01010126; padding:20px; }
+          .container { max-width:600px; margin:auto; background:white; border-radius:8px; padding:20px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
+          .header { background:#1E3A8A; color:white; padding:15px; text-align:center; border-radius:8px 8px 0 0; }
+          .content { padding:20px; text-align:center; }
+          .code { background:#38BDF8; color:white; padding:10px 20px; display:inline-block; border-radius:4px; letter-spacing:5px; font-size:24px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Password Reset</h1>
+          </div>
+          <div class="content">
+            <p>Hello <strong>${user.first_name} ${user.last_name}</strong>,</p>
+            <p>Your password reset code:</p>
+            <div class="code">${code}</div>
+            <p>This code is valid for 10 minutes.</p>
+            <p>If you did not request a password reset, ignore this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await sendEmail(email, lang === "fa" ? "ریست رمز عبور جابسرا" : "JobSara Password Reset", htmlContent);
+
+    res.json({
+      success: true,
+      message: req.t("Password reset code sent"),
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({
+      success: false,
+      message: req.t("Internal server error"),
+    });
+  }
+});
+
+// ریست رمز عبور
+router.post("/api/reset-password", async (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, message: req.t("User not found") });
+    }
+
+    const validToken = await User.getValidVerificationToken(user.id, code, 'password_reset');
+    if (!validToken) {
+      return res.status(400).json({ success: false, message: req.t("Invalid or expired code") });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await User.update(user.id, { password: hashedPassword });
+    await User.deleteVerificationToken(user.id, 'password_reset');
+
+    res.json({ success: true, message: req.t("Password reset successful") });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({
+      success: false,
+      message: req.t("Internal server error"),
+    });
+  }
+});
 router.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -313,5 +468,6 @@ router.post("/api/set-language", authenticateToken, async (req, res) => {
       .json({ success: false, message: req.t("Internal server error") });
   }
 });
+// نکته: در روت /api/login حتماً چک کن که user.is_verified === 1 باشه، وگرنه خطا بده
 
 module.exports = router;

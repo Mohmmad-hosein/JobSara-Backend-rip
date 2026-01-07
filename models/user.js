@@ -1,6 +1,6 @@
-const db = require('../config/database');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const db = require("../config/database");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 class User {
   // ایجاد کاربر جدید
@@ -16,7 +16,7 @@ class User {
       companyName,
       resume,
       skills,
-      experienceLevel
+      experienceLevel,
     } = userData;
 
     try {
@@ -39,29 +39,29 @@ class User {
         companyName || null,
         resume || null,
         skills || null,
-        experienceLevel || null
+        experienceLevel || null,
       ]);
 
       return result.lastID;
     } catch (error) {
-      console.error('Error in User.create:', error);
+      console.error("Error in User.create:", error);
       throw error;
     }
   }
 
   // پیدا کردن کاربر بر اساس ایمیل
   static findByEmail(email) {
-    return db.getQuery('SELECT * FROM users WHERE email = ?', [email]);
+    return db.getQuery("SELECT * FROM users WHERE email = ?", [email]);
   }
 
   // پیدا کردن کاربر بر اساس نام کاربری
   static findByUsername(username) {
-    return db.getQuery('SELECT * FROM users WHERE username = ?', [username]);
+    return db.getQuery("SELECT * FROM users WHERE username = ?", [username]);
   }
 
   // پیدا کردن کاربر بر اساس ID
   static findById(id) {
-    return db.getQuery('SELECT * FROM users WHERE id = ?', [id]);
+    return db.getQuery("SELECT * FROM users WHERE id = ?", [id]);
   }
 
   // بررسی صحت رمز عبور
@@ -70,17 +70,17 @@ class User {
   }
 
   // تولید توکن JWT
-static generateToken(user) {
+  static generateToken(user) {
     return jwt.sign(
-        { 
-            userId: user.id, 
-            email: user.email,
-            userType: user.user_type 
-        },
-        process.env.JWT_SECRET || 'your-secret-key',
-        { expiresIn: '24h' }
+      {
+        userId: user.id,
+        email: user.email,
+        userType: user.user_type,
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "24h" }
     );
-}
+  }
 
   // آپدیت کاربر
   static update(id, updateData) {
@@ -91,14 +91,14 @@ static generateToken(user) {
 
         // مپ کردن فیلدها به فرمت دیتابیس
         const fieldMap = {
-          'firstName': 'first_name',
-          'lastName': 'last_name',
-          'userType': 'user_type',
-          'companyName': 'company_name',
-          'experienceLevel': 'experience_level'
+          firstName: "first_name",
+          lastName: "last_name",
+          userType: "user_type",
+          companyName: "company_name",
+          experienceLevel: "experience_level",
         };
 
-        Object.keys(updateData).forEach(key => {
+        Object.keys(updateData).forEach((key) => {
           if (updateData[key] !== undefined && updateData[key] !== null) {
             const dbField = fieldMap[key] || key;
             fields.push(`${dbField} = ?`);
@@ -112,9 +112,11 @@ static generateToken(user) {
         }
 
         values.push(id);
-        
-        const sql = `UPDATE users SET ${fields.join(', ')}, updated_at = datetime('now') WHERE id = ?`;
-        
+
+        const sql = `UPDATE users SET ${fields.join(
+          ", "
+        )}, updated_at = datetime('now') WHERE id = ?`;
+
         const result = await db.runQuery(sql, values);
         resolve(result.changes);
       } catch (error) {
@@ -123,16 +125,62 @@ static generateToken(user) {
     });
   }
 
+  // تولید کد ۶ رقمی
+  static generateVerificationCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  // ذخیره کد تأیید
+static async saveVerificationToken(userId, token, type) {
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ۱۰ دقیقه
+
+  await db.runQuery(
+    `INSERT INTO verification_tokens (user_id, token, type, expires_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, type) DO UPDATE SET
+       token = excluded.token,
+       expires_at = excluded.expires_at,
+       created_at = CURRENT_TIMESTAMP`,
+    [userId, token, type, expiresAt.toISOString()]
+  );
+}
+
+// پیدا کردن کد معتبر
+static async getValidVerificationToken(userId, token, type) {
+  return await db.getQuery(
+    `SELECT * FROM verification_tokens
+     WHERE user_id = ? AND token = ? AND type = ? AND expires_at > datetime('now')`,
+    [userId, token, type]
+  );
+}
+
+// حذف کد بعد از استفاده
+static async deleteVerificationToken(userId, type) {
+  await db.runQuery(
+    `DELETE FROM verification_tokens WHERE user_id = ? AND type = ?`,
+    [userId, type]
+  );
+}
+
+// فعال کردن حساب
+static async verifyUser(userId) {
+  await db.runQuery(
+    `UPDATE users SET is_verified = 1 WHERE id = ?`,
+    [userId]
+  );
+}
+
   // حذف کاربر
   static delete(id) {
-    return db.runQuery('DELETE FROM users WHERE id = ?', [id])
-      .then(result => result.changes);
+    return db
+      .runQuery("DELETE FROM users WHERE id = ?", [id])
+      .then((result) => result.changes);
   }
 
   // گرفتن همه کاربران (با pagination)
   static getAll(limit = 10, offset = 0) {
     return db.allQuery(
-      'SELECT id, username, email, first_name, last_name, user_type, created_at FROM users LIMIT ? OFFSET ?',
+      "SELECT id, username, email, first_name, last_name, user_type, created_at FROM users LIMIT ? OFFSET ?",
       [limit, offset]
     );
   }
@@ -148,9 +196,9 @@ static generateToken(user) {
           FROM users 
           GROUP BY user_type
         `;
-        
+
         const rows = await db.allQuery(sql);
-        
+
         // مقدار پیش‌فرض برای هر نقش
         const stats = {
           total: 0,
@@ -158,15 +206,15 @@ static generateToken(user) {
           intern: 0,
           employer: 0,
           admin: 0,
-          teacher: 0
+          teacher: 0,
         };
-        
+
         // محاسبه مجموع و تعداد هر نقش
-        rows.forEach(row => {
+        rows.forEach((row) => {
           stats.total += row.count;
           stats[row.user_type] = row.count;
         });
-        
+
         resolve(stats);
       } catch (error) {
         reject(error);
@@ -176,44 +224,47 @@ static generateToken(user) {
 
   // ذخیره توکن در دیتابیس
   static saveToken(userId, token, expiresAt) {
-    return db.runQuery(
-      'INSERT INTO user_sessions (user_id, token, expires_at) VALUES (?, ?, ?)',
-      [userId, token, expiresAt]
-    ).then(result => result.lastID);
+    return db
+      .runQuery(
+        "INSERT INTO user_sessions (user_id, token, expires_at) VALUES (?, ?, ?)",
+        [userId, token, expiresAt]
+      )
+      .then((result) => result.lastID);
   }
 
   // بررسی اعتبار توکن
-static async validateToken(token) {
+  static async validateToken(token) {
     try {
       // اول توکن JWT را verify کنید
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-      
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "your-secret-key"
+      );
+
       // سپس وجود توکن در دیتابیس را بررسی کنید
       const session = await db.getQuery(
         'SELECT * FROM user_sessions WHERE token = ? AND expires_at > datetime("now") AND user_id = ?',
         [token, decoded.userId]
       );
-      
+
       return session;
     } catch (error) {
-      console.error('Token validation error:', error);
+      console.error("Token validation error:", error);
       return null;
     }
   }
   // حذف توکن
   static deleteToken(token) {
-    return db.runQuery(
-      'DELETE FROM user_sessions WHERE token = ?',
-      [token]
-    ).then(result => result.changes);
+    return db
+      .runQuery("DELETE FROM user_sessions WHERE token = ?", [token])
+      .then((result) => result.changes);
   }
 
   // حذف همه توکن‌های کاربر
   static deleteAllUserTokens(userId) {
-    return db.runQuery(
-      'DELETE FROM user_sessions WHERE user_id = ?',
-      [userId]
-    ).then(result => result.changes);
+    return db
+      .runQuery("DELETE FROM user_sessions WHERE user_id = ?", [userId])
+      .then((result) => result.changes);
   }
 }
 

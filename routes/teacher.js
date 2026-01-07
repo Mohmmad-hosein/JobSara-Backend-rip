@@ -3,6 +3,7 @@ const router = express.Router();
 const Teacher = require('../models/teacher');
 const multer = require('multer');
 const { authenticateToken, requireAdmin } = require('../middlewares/auth');
+const { decode, encode } = require('../utils/idHasher');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -17,19 +18,26 @@ const upload = multer({
   },
 });
 
-// API برای گرفتن لیست تیچرها
+// لیست تیچرها
 router.get("/api/teachers", authenticateToken, async (req, res) => {
   try {
     const isAdmin = req.user.user_type === "admin";
     const { search, minRating = 0, limit = 10, offset = 0 } = req.query;
 
-    const teachers = await Teacher.getTeachers({
+    let teachers = await Teacher.getTeachers({
       isAdmin,
       search,
       minRating: parseFloat(minRating),
       limit: parseInt(limit),
       offset: parseInt(offset),
     });
+
+    // اضافه کردن hashedId و حذف id عددی
+    teachers = teachers.map(t => ({
+      ...t,
+      hashedId: encode(t.id),
+    }));
+    teachers.forEach(t => delete t.id);
 
     res.json({
       success: true,
@@ -39,13 +47,11 @@ router.get("/api/teachers", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error("Teachers list error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: req.t("Internal server error") });
+    res.status(500).json({ success: false, message: req.t("Internal server error") });
   }
 });
 
-// API اضافه کردن تیچر
+// اضافه کردن تیچر
 router.post("/api/teachers",
   authenticateToken,
   requireAdmin,
@@ -53,82 +59,83 @@ router.post("/api/teachers",
   async (req, res) => {
     try {
       const profilePictureBuffer = req.file ? req.file.buffer : null;
-      const teacherId = await Teacher.addTeacher(
-        req.body,
-        profilePictureBuffer
-      );
-      res
-        .status(201)
-        .json({ success: true, message: req.t("Teacher added"), teacherId });
+      const teacherId = await Teacher.addTeacher(req.body, profilePictureBuffer);
+      const hashedTeacherId = encode(teacherId); // hashed برمی‌گردونیم
+
+      res.status(201).json({ 
+        success: true, 
+        message: req.t("Teacher added"), 
+        hashedTeacherId // به جای teacherId عددی
+      });
     } catch (error) {
       console.error("Error adding teacher:", error);
       res.status(500).json({
         success: false,
-        message:
-          req.t("Error adding teacher") +
-          (error.message ? ": " + error.message : ""),
+        message: req.t("Error adding teacher") + (error.message ? ": " + error.message : ""),
       });
     }
   }
 );
 
-// API حذف تیچر
-router.delete("/api/teachers/:id",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const changes = await Teacher.deleteTeacher(req.params.id);
-      if (changes > 0) {
-        res.json({ success: true, message: req.t("Teacher deleted") });
-      } else {
-        res
-          .status(404)
-          .json({ success: false, message: req.t("Teacher not found") });
-      }
-    } catch (error) {
-      res
-        .status(500)
-        .json({ success: false, message: req.t("Error deleting teacher") });
-    }
-  }
-);
-
-// API تیچرها برای لندینگ
-router.get("/api/landing/teachers", async (req, res) => {
+// حذف تیچر
+router.delete("/api/teachers/:hashedId", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { limit = 5 } = req.query;
-    const lang = req.i18n.language; // زبان از i18next
-    const teachers = await Teacher.getLandingTeachers(parseInt(limit), lang); // lang اضافه
-    res.json({ success: true, teachers });
+    const teacherId = decode(req.params.hashedId);
+    if (!teacherId) return res.status(400).json({ success: false, message: "Invalid ID" });
+
+    const changes = await Teacher.deleteTeacher(teacherId);
+    if (changes > 0) {
+      res.json({ success: true, message: req.t("Teacher deleted") });
+    } else {
+      res.status(404).json({ success: false, message: req.t("Teacher not found") });
+    }
   } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: req.t("Internal server error") });
+    res.status(500).json({ success: false, message: req.t("Error deleting teacher") });
   }
 });
 
-// API جزئیات تیچر
-router.get("/api/teachers/:id", authenticateToken, async (req, res) => {
+// لندینگ تیچرها (عمومی، بدون توکن)
+router.get("/api/landing/teachers", async (req, res) => {
   try {
-    const teacher = await Teacher.getTeacherDetails(req.params.id);
+    const { limit = 5 } = req.query;
+    const lang = req.i18n.language;
+    let teachers = await Teacher.getLandingTeachers(parseInt(limit), lang);
+
+    // hashedId اضافه کن
+    teachers = teachers.map(t => ({
+      ...t,
+      hashedId: encode(t.id),
+    }));
+    teachers.forEach(t => delete t.id);
+
+    res.json({ success: true, teachers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: req.t("Internal server error") });
+  }
+});
+
+// جزئیات تیچر
+router.get("/api/teachers/:hashedId", authenticateToken, async (req, res) => {
+  try {
+    const teacherId = decode(req.params.hashedId);
+    if (!teacherId) return res.status(400).json({ success: false, message: "Invalid ID" });
+
+    let teacher = await Teacher.getTeacherDetails(teacherId);
     if (!teacher) {
-      return res
-        .status(404)
-        .json({ success: false, message: req.t("Teacher not found") });
+      return res.status(404).json({ success: false, message: req.t("Teacher not found") });
     }
+
+    teacher.hashedId = encode(teacher.id);
+    delete teacher.id;
+
     res.json({
       success: true,
       message: req.t("Teacher retrieved successfully"),
       teacher,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: req.t("Internal server error") });
+    res.status(500).json({ success: false, message: req.t("Internal server error") });
   }
 });
-
-
 
 module.exports = router;

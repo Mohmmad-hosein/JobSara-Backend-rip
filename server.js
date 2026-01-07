@@ -7,6 +7,7 @@ const authRouter = require("./routes/auth");
 const userRouter = require("./routes/user");
 const teacherRouter = require("./routes/teacher");
 const contactRouter = require("./routes/contact");
+const categoryRouter = require("./routes/category");
 const cors = require("cors");
 
 
@@ -24,6 +25,7 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 // Routes
+app.use("/", categoryRouter);
 app.use("/", authRouter);
 app.use("/", userRouter);
 app.use("/", teacherRouter);
@@ -67,9 +69,13 @@ app.get("/", (req, res) => {
     version: "1.0.0",
     endpoints: {
       health: "/health",
-      register: "/api/register (POST)",
+      register: "/api/register/step1 (POST)",
+      registerStep2: "/api/register/verify (POST)",
       login: "/api/login (POST)",
       logout: "/api/logout (POST)",
+      forgotPassword: "/api/forgot-password (POST)",
+      resetPassword: "/api/reset-password (POST)",
+      setLanguage: "/api/set-language (POST)",
       getProfile: "/api/profile/:id (GET)",
       updateProfile: "/api/profile/:id (PUT)",
       getAllUsers: "/api/users (GET) - Admin only",
@@ -82,6 +88,10 @@ app.get("/", (req, res) => {
       landingTeachers: "/api/landing/teachers (GET)",
       teacherDetails: "/api/teachers/:id (GET)",
       siteSummary: "/api/summary (GET)",
+      getCategories: "/api/categories (GET)",
+      getCategory: "/api/categories/:hashedId (GET)",
+      addCategory: "/api/categories (POST) - Admin only + image upload",
+      deleteCategory: "/api/categories/:hashedId (DELETE) - Admin only",
     },
   });
 });

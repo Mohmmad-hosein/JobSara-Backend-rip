@@ -41,5 +41,11 @@
   "Server is running": "سرور در حال اجراست",
   "JobSara Backend Server": "سرور بک‌اند جاب‌سرا",
   "Endpoint not found": "اندپوینت یافت نشد",
-  "Something went wrong!": "مشکلی پیش آمده است!"
+  "Something went wrong!": "مشکلی پیش آمده است!",
+  "Categories retrieved successfully": "دسته‌بندی‌ها با موفقیت دریافت شدند",
+  "Category retrieved successfully": "دسته‌بندی با موفقیت دریافت شد",
+  "Category added successfully": "دسته‌بندی با موفقیت اضافه شد",
+  "Category deleted successfully": "دسته‌بندی با موفقیت حذف شد",
+  "Category not found": "دسته‌بندی یافت نشد",
+  "Title is required": "عنوان الزامی است"
 }

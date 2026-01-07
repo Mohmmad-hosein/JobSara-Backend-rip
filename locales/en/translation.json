@@ -41,5 +41,11 @@
   "Server is running": "Server is running",
   "JobSara Backend Server": "JobSara Backend Server",
   "Endpoint not found": "Endpoint not found",
-  "Something went wrong!": "Something went wrong!"
+  "Something went wrong!": "Something went wrong!",
+  "Categories retrieved successfully": "Categories retrieved successfully",
+  "Category retrieved successfully": "Category retrieved successfully",
+  "Category added successfully": "Category added successfully",
+  "Category deleted successfully": "Category deleted successfully",
+  "Category not found": "Category not found",
+  "Title is required": "Title is required"
 }

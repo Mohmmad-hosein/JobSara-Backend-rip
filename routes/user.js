@@ -1,29 +1,32 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const User = require('../models/user');
-const { authenticateToken, requireAdmin } = require('../middlewares/auth');
+const User = require("../models/user");
+const { authenticateToken, requireAdmin } = require("../middlewares/auth");
+const { decode, encode } = require("../utils/idHasher");
 
-// API برای گرفتن پروفایل کاربر
-router.get("/api/profile/:id", authenticateToken, async (req, res) => {
+// پروفایل
+router.get("/api/profile/:hashedId", authenticateToken, async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId = decode(req.params.hashedId);
+    if (!userId)
+      return res.status(400).json({ success: false, message: "Invalid ID" });
 
-    if (req.user.id !== parseInt(userId) && req.user.user_type !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: req.t("Access denied"),
-      });
+    // چک دسترسی (خود کاربر یا ادمین)
+    if (req.user.id !== userId && req.user.user_type !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: req.t("Access denied") });
     }
 
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: req.t("User not found"),
-      });
-    }
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: req.t("User not found") });
 
-    const { password, ...userWithoutPassword } = user;
+    const { password, id: _, ...userWithoutPassword } = user;
+    userWithoutPassword.hashedId = encode(user.id);
+    delete userWithoutPassword.id;
 
     res.json({
       success: true,
@@ -31,21 +34,22 @@ router.get("/api/profile/:id", authenticateToken, async (req, res) => {
       user: userWithoutPassword,
     });
   } catch (error) {
-    console.error("Profile error:", error);
-    res.status(500).json({
-      success: false,
-      message: req.t("Internal server error"),
-    });
+    res
+      .status(500)
+      .json({ success: false, message: req.t("Internal server error") });
   }
 });
 
-// API برای ویرایش پروفایل کاربر
-router.put("/api/profile/:id", authenticateToken, async (req, res) => {
+// ویرایش پروفایل
+router.put("/api/profile/:hashedId", authenticateToken, async (req, res) => {
   try {
-    const userId = req.params.id;
-    const updateData = req.body;
+    const userId = decode(req.params.hashedId);
+    const updatedUser = await User.findById(userId);
 
-    if (req.user.id !== parseInt(userId) && req.user.user_type !== "admin") {
+    if (
+      req.user.hashedId !== parseInt(userId) &&
+      req.user.user_type !== "admin"
+    ) {
       return res.status(403).json({
         success: false,
         message: req.t("Access denied"),
@@ -64,6 +68,8 @@ router.put("/api/profile/:id", authenticateToken, async (req, res) => {
     if (changes > 0) {
       const updatedUser = await User.findById(userId);
       const { password, ...userWithoutPassword } = updatedUser;
+      userWithoutPassword.hashedId = encode(updatedUser.id);
+      delete userWithoutPassword.id;
 
       res.json({
         success: true,
@@ -83,17 +89,24 @@ router.put("/api/profile/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// API برای گرفتن همه کاربران (فقط برای ادمین)
+// ادمین - لیست کاربران
 router.get("/api/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { limit = 10, offset = 0 } = req.query;
 
-    const users = await User.getAll(parseInt(limit), parseInt(offset));
+    let users = await User.getAll(parseInt(limit), parseInt(offset)); // اینجا let بذار
+
+    // اضافه کردن hashedId و حذف id عددی
+    users = users.map(u => ({
+      ...u,
+      hashedId: encode(u.id),
+    }));
+    users.forEach(u => delete u.id); // id عددی رو کامل حذف کن (امنیت بیشتر)
 
     res.json({
       success: true,
       message: req.t("Users retrieved successfully"),
-      users: users,
+      users,
       pagination: {
         limit: parseInt(limit),
         offset: parseInt(offset),
@@ -109,42 +122,50 @@ router.get("/api/users", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// API برای گرفتن کاربر خاص توسط ID (فقط برای ادمین)
-router.get("/api/users/:id", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: req.t("User not found"),
-      });
-    }
-
-    const { password, ...userWithoutPassword } = user;
-
-    res.json({
-      success: true,
-      message: req.t("User retrieved successfully"),
-      user: userWithoutPassword,
-    });
-  } catch (error) {
-    console.error("Get user error:", error);
-    res.status(500).json({
-      success: false,
-      message: req.t("Internal server error"),
-    });
-  }
-});
-
-// API برای ارتقای نقش کاربر (فقط برای ادمین)
-router.put("/api/users/:id/role",
+// ادمین - کاربر خاص
+router.get(
+  "/api/users/:hashedId",
   authenticateToken,
   requireAdmin,
   async (req, res) => {
     try {
-      const userId = req.params.id;
+      const userId = decode(req.params.hashedId);
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: req.t("User not found"),
+        });
+      }
+
+      const { password, ...userWithoutPassword } = user;
+      userWithoutPassword.hashedId = encode(user.id);
+      delete userWithoutPassword.id;
+
+      res.json({
+        success: true,
+        message: req.t("User retrieved successfully"),
+        user: userWithoutPassword,
+      });
+    } catch (error) {
+      console.error("Get user error:", error);
+      res.status(500).json({
+        success: false,
+        message: req.t("Internal server error"),
+      });
+    }
+  }
+);
+
+// تغییر نقش
+router.put(
+  "/api/users/:hashedId/role",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const userId = decode(req.params.hashedId);
       const { newRole } = req.body;
 
       if (!newRole) {
@@ -207,13 +228,14 @@ router.put("/api/users/:id/role",
   }
 );
 
-// API برای حذف کاربر (فقط برای ادمین)
-router.delete("/api/users/:id",
+// حذف کاربر
+router.delete(
+  "/api/users/:hashedId",
   authenticateToken,
   requireAdmin,
   async (req, res) => {
     try {
-      const userId = req.params.id;
+      const userId = decode(req.params.hashedId);
 
       const user = await User.findById(userId);
       if (!user) {

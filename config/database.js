@@ -67,40 +67,38 @@ function initializeDatabase() {
       }
     }
   );
-  // add contact-us database
-  // db.run(
-  //   `CREATE TABLE IF NOT EXISTS contactUs (
-  //       id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //       userId INTEGER UNIQUE NOT NULL,
-  //       title TEXT UNIQUE NOT NULL,
-  //       describe TEXT NOT NULL,
-  //       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  //   )`,
-  //   (err) => {
-  //     if (err) {
-  //       console.error("❌ Error creating message table:", err.message);
-  //     } else {
-  //       console.log("✅ Contact-us table ready");
-  //     }
-  //   }
-  // );
 
-  // ایجاد جدول user_sessions برای توکن‌ها
   db.run(
-    `CREATE TABLE IF NOT EXISTS user_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        token TEXT NOT NULL UNIQUE,
-        expires_at DATETIME NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    )`,
+    `ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0`,
+    (err) => {
+      if (err && !err.message.includes("duplicate column name")) {
+        console.error("❌ Error adding is_verified to users:", err.message);
+      } else {
+        console.log("✅ Added is_verified to users table");
+      }
+    }
+  );
+
+  // جدول جدید برای کدهای تأیید (ثبت‌نام و ریست پسورد)
+  db.run(
+    `CREATE TABLE IF NOT EXISTS verification_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('registration', 'password_reset')),
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+      UNIQUE(user_id, type)
+  )`,
     (err) => {
       if (err) {
-        console.error("❌ Error creating user_sessions table:", err.message);
+        console.error(
+          "❌ Error creating verification_tokens table:",
+          err.message
+        );
       } else {
-        console.log("✅ User sessions table ready");
+        console.log("✅ Verification tokens table ready");
       }
     }
   );
@@ -141,18 +139,21 @@ function initializeDatabase() {
   });
 
   db.run(`ALTER TABLE user_profiles ADD COLUMN translated_bio TEXT`, (err) => {
-    if (err && !err.message.includes('duplicate column name')) {
-      console.error('❌ Error adding translated_bio:', err.message);
+    if (err && !err.message.includes("duplicate column name")) {
+      console.error("❌ Error adding translated_bio:", err.message);
     } else {
-      console.log('✅ Added translated_bio');
+      console.log("✅ Added translated_bio");
     }
   });
 
   db.run(`ALTER TABLE user_profiles ADD COLUMN profile_picture BLOB`, (err) => {
-    if (err && !err.message.includes('duplicate column name')) {
-      console.error('❌ Error adding profile_picture to user_profiles:', err.message);
+    if (err && !err.message.includes("duplicate column name")) {
+      console.error(
+        "❌ Error adding profile_picture to user_profiles:",
+        err.message
+      );
     } else {
-      console.log('✅ Added profile_picture to user_profiles table');
+      console.log("✅ Added profile_picture to user_profiles table");
     }
   });
 
@@ -162,10 +163,10 @@ function initializeDatabase() {
 
 // برای courses (اگر description داره)
 db.run(`ALTER TABLE courses ADD COLUMN translated_description TEXT`, (err) => {
-  if (err && !err.message.includes('duplicate column name')) {
-    console.error('❌ Error adding translated_description:', err.message);
+  if (err && !err.message.includes("duplicate column name")) {
+    console.error("❌ Error adding translated_description:", err.message);
   } else {
-    console.log('✅ Added translated_description');
+    console.log("✅ Added translated_description");
   }
 });
 
@@ -222,6 +223,45 @@ function createAdditionalTables() {
         console.error("❌ Error creating jobs table:", err.message);
       } else {
         console.log("✅ Jobs table ready");
+      }
+    }
+  );
+
+  // جدول کتگوری‌های دوره‌ها
+  db.run(
+    `CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      image BLOB,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`,
+    (err) => {
+      if (err) {
+        console.error("❌ Error creating categories table:", err.message);
+      } else {
+        console.log("✅ Categories table ready");
+      }
+    }
+  );
+
+  // ایجاد جدول contactUs
+  db.run(
+    `CREATE TABLE IF NOT EXISTS contactUs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      describe TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+  )`,
+    (err) => {
+      if (err) {
+        console.error("❌ Error creating contactUs table:", err.message);
+      } else {
+        console.log("✅ ContactUs table ready");
       }
     }
   );
